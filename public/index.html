@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Formation Runner</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="app">
+      <section class="hud">
+        <div><span>Formation</span><strong id="formationLabel">Phalanx</strong></div>
+        <div><span>Units</span><strong id="unitCount">0</strong></div>
+        <div><span>Score</span><strong id="scoreLabel">0</strong></div>
+      </section>
+
+      <canvas id="gameCanvas" width="420" height="760" aria-label="Formation Runner game"></canvas>
+
+      <section class="controls">
+        <button type="button" data-action="left">Left</button>
+        <button type="button" data-action="cycle">Formation</button>
+        <button type="button" data-action="right">Right</button>
+      </section>
+
+      <p class="help">
+        Move: Arrow keys / A-D / touch buttons or drag. Switch formation: Space / Q / E / tap Formation.
+      </p>
+    </main>
+
+    <script type="module" src="./main.js"></script>
+  </body>
+  </html>
