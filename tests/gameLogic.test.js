@@ -6,7 +6,7 @@ import {
   getFormationLayout,
   resolveObstacleEffect,
   updateGame,
-} from "../public/gameLogic.js";
+} from "../gameLogic.js";
 
 test("phalanx prioritizes tanks in the front row", () => {
   const state = createInitialState();

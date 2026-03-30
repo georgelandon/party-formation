@@ -4,7 +4,7 @@ import { createServer } from "node:http";
 import { extname, join, normalize } from "node:path";
 
 const port = Number(process.env.PORT || 3000);
-const publicDir = join(process.cwd(), "public");
+const siteDir = process.cwd();
 
 const contentTypes = {
   ".css": "text/css; charset=utf-8",
@@ -16,9 +16,9 @@ const contentTypes = {
 
 const server = createServer(async (req, res) => {
   const url = new URL(req.url || "/", `http://${req.headers.host}`);
-  let filePath = normalize(join(publicDir, url.pathname === "/" ? "index.html" : url.pathname));
+  let filePath = normalize(join(siteDir, url.pathname === "/" ? "index.html" : url.pathname));
 
-  if (!filePath.startsWith(publicDir)) {
+  if (!filePath.startsWith(siteDir)) {
     res.writeHead(403);
     res.end("Forbidden");
     return;
