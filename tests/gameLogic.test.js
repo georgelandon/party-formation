@@ -44,3 +44,34 @@ test("game ends when the party is emptied", () => {
   assert.equal(next.gameOver, true);
   assert.equal(next.running, false);
 });
+
+test("opening pickups and barriers are spaced out", () => {
+  const state = createInitialState();
+  const pickupYs = state.level.pickups
+    .map((pickup) => pickup.y)
+    .sort((a, b) => a - b)
+    .slice(0, 4);
+  const obstacleYs = state.level.obstacles
+    .map((obstacle) => obstacle.y)
+    .sort((a, b) => a - b)
+    .slice(0, 4);
+
+  assert.ok(pickupYs[0] >= 300);
+  assert.ok(pickupYs[1] - pickupYs[0] >= 400);
+  assert.ok(obstacleYs[0] >= 1500);
+  assert.ok(obstacleYs[1] - obstacleYs[0] >= 850);
+});
+
+test("content replenishes ahead of the player for endless runs", () => {
+  const state = createInitialState();
+  state.distance = 12000;
+  state.level.pickups = [];
+  state.level.obstacles = [];
+  state.level.enemies = [];
+
+  const next = updateGame(state, { moveX: 0, cycleFormation: false, prevFormation: false }, 0);
+
+  assert.ok(next.level.pickups.some((pickup) => pickup.y > next.distance));
+  assert.ok(next.level.obstacles.some((obstacle) => obstacle.y > next.distance));
+  assert.ok(next.level.enemies.some((enemy) => enemy.y > next.distance));
+});

@@ -12,36 +12,36 @@ const FORMATION_LABEL = {
   column: "Column",
 };
 
-const LEVEL = {
-  pickups: [
-    { id: "pickup-1", type: "circle", x: 110, y: 180 },
-    { id: "pickup-2", type: "triangle", x: 310, y: 360 },
-    { id: "pickup-3", type: "square", x: 170, y: 620 },
-    { id: "pickup-4", type: "circle", x: 290, y: 860 },
-    { id: "pickup-5", type: "triangle", x: 130, y: 1180 },
-    { id: "pickup-6", type: "square", x: 230, y: 1510 },
-    { id: "pickup-7", type: "circle", x: 320, y: 1775 },
-    { id: "pickup-8", type: "triangle", x: 115, y: 2140 },
-  ],
-  obstacles: [
-    { id: "obs-1", type: "damage-wall", x: 210, y: 460, width: 190 },
-    { id: "obs-2", type: "breakable-barrier", x: 210, y: 980, width: 180 },
-    { id: "obs-3", type: "narrow-gap", x: 210, y: 1380, width: 80 },
-    { id: "obs-4", type: "projectile-field", x: 210, y: 1880, width: 220, length: 180 },
-    { id: "obs-5", type: "damage-wall", x: 210, y: 2420, width: 210 },
-    { id: "obs-6", type: "breakable-barrier", x: 210, y: 2790, width: 200 },
-    { id: "obs-7", type: "narrow-gap", x: 210, y: 3220, width: 80 },
-  ],
-  enemies: [
-    { id: "enemy-1", x: 210, y: 300, hp: 2, speed: 30 },
-    { id: "enemy-2", x: 110, y: 720, hp: 2, speed: 35 },
-    { id: "enemy-3", x: 295, y: 1100, hp: 3, speed: 40 },
-    { id: "enemy-4", x: 180, y: 1650, hp: 3, speed: 45 },
-    { id: "enemy-5", x: 250, y: 2050, hp: 4, speed: 50 },
-    { id: "enemy-6", x: 130, y: 2560, hp: 4, speed: 50 },
-    { id: "enemy-7", x: 300, y: 3010, hp: 5, speed: 52 },
-  ],
+const LANE_X = [104, 158, 210, 262, 316];
+const SPAWN_BUFFER = 3200;
+const OBSTACLE_SEQUENCE = ["damage-wall", "breakable-barrier", "narrow-gap", "projectile-field"];
+const OBSTACLE_CONFIG = {
+  "damage-wall": { width: 190 },
+  "breakable-barrier": { width: 180 },
+  "narrow-gap": { width: 80 },
+  "projectile-field": { width: 220, length: 180 },
 };
+
+const INTRO_PICKUPS = [
+  { type: "circle", x: 116, y: 320 },
+  { type: "triangle", x: 308, y: 780 },
+  { type: "square", x: 210, y: 1280 },
+  { type: "circle", x: 144, y: 1880 },
+];
+
+const INTRO_ENEMIES = [
+  { x: 210, y: 620, hp: 2, speed: 30 },
+  { x: 120, y: 1140, hp: 2, speed: 34 },
+  { x: 286, y: 1760, hp: 3, speed: 38 },
+  { x: 182, y: 2580, hp: 3, speed: 42 },
+];
+
+const INTRO_OBSTACLES = [
+  { type: "damage-wall", x: 210, y: 1560 },
+  { type: "breakable-barrier", x: 210, y: 2480 },
+  { type: "narrow-gap", x: 210, y: 3440 },
+  { type: "projectile-field", x: 210, y: 4460 },
+];
 
 export function createUnit(type, id) {
   return {
@@ -54,14 +54,115 @@ export function createUnit(type, id) {
   };
 }
 
+function nextRandom(state) {
+  state.rngSeed = (Math.imul(state.rngSeed, 1664525) + 1013904223) >>> 0;
+  return state.rngSeed / 0x100000000;
+}
+
+function pickRandom(state, values) {
+  return values[Math.floor(nextRandom(state) * values.length)];
+}
+
+function createPickupEntity(state, type, x, y) {
+  const pickup = {
+    id: `pickup-${state.nextPickupId}`,
+    type,
+    x,
+    y,
+  };
+  state.nextPickupId += 1;
+  return pickup;
+}
+
+function createEnemyEntity(state, x, y, hp, speed) {
+  const enemy = {
+    id: `enemy-${state.nextEnemyId}`,
+    x,
+    y,
+    hp,
+    speed,
+  };
+  state.nextEnemyId += 1;
+  return enemy;
+}
+
+function createObstacleEntity(state, type, y, x = 210) {
+  const config = OBSTACLE_CONFIG[type];
+  const obstacle = {
+    id: `obs-${state.nextObstacleId}`,
+    type,
+    x,
+    y,
+    width: config.width,
+    resolved: false,
+    timer: 0,
+  };
+  if (config.length) {
+    obstacle.length = config.length;
+  }
+  state.nextObstacleId += 1;
+  return obstacle;
+}
+
+function choosePickupType(state) {
+  const counts = { square: 0, triangle: 0, circle: 0 };
+  for (const unit of state.player.party) {
+    counts[unit.type] += 1;
+  }
+
+  const underrepresented = UNIT_TYPES.reduce((best, type) => {
+    if (counts[type] < counts[best]) {
+      return type;
+    }
+    return best;
+  }, UNIT_TYPES[0]);
+
+  if (nextRandom(state) < 0.6) {
+    return underrepresented;
+  }
+  return pickRandom(state, UNIT_TYPES);
+}
+
+function chooseLaneX(state, avoidX = null) {
+  let lane = pickRandom(state, LANE_X);
+  if (avoidX !== null && LANE_X.length > 1 && lane === avoidX) {
+    lane = LANE_X[(LANE_X.indexOf(lane) + 1 + Math.floor(nextRandom(state) * (LANE_X.length - 1))) % LANE_X.length];
+  }
+  return lane;
+}
+
+function seedInitialContent(state) {
+  for (const pickup of INTRO_PICKUPS) {
+    state.level.pickups.push(createPickupEntity(state, pickup.type, pickup.x, pickup.y));
+  }
+
+  for (const enemy of INTRO_ENEMIES) {
+    state.level.enemies.push(createEnemyEntity(state, enemy.x, enemy.y, enemy.hp, enemy.speed));
+  }
+
+  for (const obstacle of INTRO_OBSTACLES) {
+    state.level.obstacles.push(createObstacleEntity(state, obstacle.type, obstacle.y, obstacle.x));
+  }
+
+  state.level.nextPickupY = INTRO_PICKUPS.at(-1).y + 520;
+  state.level.nextEnemyY = INTRO_ENEMIES.at(-1).y + 440;
+  state.level.nextObstacleY = INTRO_OBSTACLES.at(-1).y + 920;
+  state.level.obstaclePatternIndex = INTRO_OBSTACLES.length % OBSTACLE_SEQUENCE.length;
+  maintainSpawnBuffers(state);
+}
+
 export function createInitialState() {
-  return {
+  const state = {
     running: true,
     gameOver: false,
     score: 0,
     kills: 0,
     nextUnitId: 4,
     nextProjectileId: 1,
+    nextPickupId: 1,
+    nextObstacleId: 1,
+    nextEnemyId: 1,
+    rngSeed: 0x1234abcd,
     distance: 0,
     player: {
       x: 210,
@@ -75,13 +176,20 @@ export function createInitialState() {
       ],
     },
     level: {
-      pickups: LEVEL.pickups.map((pickup) => ({ ...pickup })),
-      obstacles: LEVEL.obstacles.map((obstacle) => ({ ...obstacle, resolved: false, timer: 0 })),
-      enemies: LEVEL.enemies.map((enemy) => ({ ...enemy })),
+      pickups: [],
+      obstacles: [],
+      enemies: [],
+      nextPickupY: 0,
+      nextEnemyY: 0,
+      nextObstacleY: 0,
+      obstaclePatternIndex: 0,
     },
     projectiles: [],
     message: "",
   };
+
+  seedInitialContent(state);
+  return state;
 }
 
 function priorityByFormation(formation) {
@@ -153,10 +261,6 @@ function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
 
-function removeUnitById(party, id) {
-  return party.filter((unit) => unit.id !== id);
-}
-
 function applyDamageToUnit(unit, amount) {
   return { ...unit, hp: unit.hp - amount };
 }
@@ -181,8 +285,7 @@ function damageFrontUnits(state, amount, count = 1) {
 
   const updated = [];
   for (let index = 0; index < Math.min(count, frontUnits.length); index += 1) {
-    const unit = frontUnits[index];
-    updated.push(applyDamageToUnit(unit, amount));
+    updated.push(applyDamageToUnit(frontUnits[index], amount));
   }
   replacePartyUnits(state, updated);
 }
@@ -243,6 +346,66 @@ function addPickup(state, pickup) {
   state.message = `Picked up ${pickup.type}.`;
 }
 
+function spawnPickup(state) {
+  const y = state.level.nextPickupY;
+  const pickup = createPickupEntity(state, choosePickupType(state), chooseLaneX(state), y);
+  state.level.pickups.push(pickup);
+
+  const earlyStretch = state.level.nextPickupY < 3200;
+  const spacing = earlyStretch ? 420 + nextRandom(state) * 110 : 320 + nextRandom(state) * 170;
+  state.level.nextPickupY += spacing;
+}
+
+function spawnEnemy(state) {
+  const y = state.level.nextEnemyY;
+  const stage = Math.floor(state.distance / 3000);
+  const hp = 2 + Math.min(3, stage) + (nextRandom(state) < 0.3 ? 1 : 0);
+  const speed = 30 + stage * 3 + Math.floor(nextRandom(state) * 10);
+  const enemy = createEnemyEntity(state, chooseLaneX(state), y, hp, speed);
+  state.level.enemies.push(enemy);
+
+  const earlyStretch = state.level.nextEnemyY < 3200;
+  const spacing = earlyStretch ? 470 + nextRandom(state) * 130 : 360 + nextRandom(state) * 180;
+  state.level.nextEnemyY += spacing;
+}
+
+function spawnObstacle(state) {
+  const type = OBSTACLE_SEQUENCE[state.level.obstaclePatternIndex % OBSTACLE_SEQUENCE.length];
+  const obstacle = createObstacleEntity(state, type, state.level.nextObstacleY);
+  state.level.obstacles.push(obstacle);
+  state.level.obstaclePatternIndex += 1;
+
+  const earlyStretch = state.level.nextObstacleY < 5200;
+  const spacing = earlyStretch ? 820 + nextRandom(state) * 160 : 680 + nextRandom(state) * 220;
+  state.level.nextObstacleY += spacing + (type === "projectile-field" ? 80 : 0);
+}
+
+function cleanupLevel(state) {
+  state.level.pickups = state.level.pickups.filter((pickup) => pickup.y > state.distance - 120);
+  state.level.enemies = state.level.enemies.filter((enemy) => enemy.y > state.distance - 180 && enemy.hp > 0);
+  state.level.obstacles = state.level.obstacles.filter((obstacle) => {
+    const tailY = obstacle.y + (obstacle.length || 0);
+    return tailY > state.distance - 260;
+  });
+  state.projectiles = state.projectiles.filter(
+    (projectile) => projectile.y > state.distance - 40 && projectile.y < state.distance + 720,
+  );
+}
+
+function maintainSpawnBuffers(state) {
+  cleanupLevel(state);
+  const maxAheadY = state.distance + SPAWN_BUFFER;
+  while (state.level.nextPickupY <= maxAheadY) {
+    spawnPickup(state);
+  }
+  while (state.level.nextEnemyY <= maxAheadY) {
+    spawnEnemy(state);
+  }
+  while (state.level.nextObstacleY <= maxAheadY) {
+    spawnObstacle(state);
+  }
+}
+
 function updateProjectiles(state, dt) {
   const nextProjectiles = [];
   for (const projectile of state.projectiles) {
@@ -283,7 +446,10 @@ function updateCombat(state, dt) {
       continue;
     }
     const target = state.level.enemies.find(
-      (enemy) => enemy.y > state.distance && enemy.y - state.distance < 280 && Math.abs(enemy.x - (state.player.x + circle.x)) < 50,
+      (enemy) =>
+        enemy.y > state.distance &&
+        enemy.y - state.distance < 280 &&
+        Math.abs(enemy.x - (state.player.x + circle.x)) < 50,
     );
     if (target) {
       actual.cooldown = 0.55;
@@ -304,7 +470,10 @@ function updateCombat(state, dt) {
       continue;
     }
     const target = state.level.enemies.find(
-      (enemy) => enemy.y - state.distance < 88 && enemy.y >= state.distance && Math.abs(enemy.x - (state.player.x + triangle.x)) < 44,
+      (enemy) =>
+        enemy.y - state.distance < 88 &&
+        enemy.y >= state.distance &&
+        Math.abs(enemy.x - (state.player.x + triangle.x)) < 44,
     );
     if (target) {
       actual.cooldown = 0.45;
@@ -397,11 +566,13 @@ export function updateGame(state, input, dt) {
   next.distance += next.player.speed * dt;
   next.score = Math.max(next.score, Math.floor(next.distance) + next.kills * 50);
 
+  maintainSpawnBuffers(next);
   updatePickups(next);
   updateObstacles(next, dt);
   updateCombat(next, dt);
   updateProjectiles(next, dt);
   updateEnemies(next, dt);
+  maintainSpawnBuffers(next);
 
   if (next.player.party.length === 0) {
     next.running = false;
