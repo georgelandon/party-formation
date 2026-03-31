@@ -1,4 +1,4 @@
-export const FORMATIONS = ["phalanx", "spearhead", "spread", "column"];
+export const FORMATIONS = ["spread", "column", "spearhead", "phalanx"];
 export const UNIT_TYPES = ["square", "triangle", "circle"];
 
 const PLAYER_BOUNDS = { minX: 60, maxX: 360 };
@@ -6,12 +6,13 @@ const UNIT_HP = { square: 3, triangle: 2, circle: 1 };
 const UNIT_ROLE = { square: "tank", triangle: "melee", circle: "ranged" };
 const UNIT_COLOR = { square: "#8bd3dd", triangle: "#ffd166", circle: "#ff7f7f" };
 const FORMATION_LABEL = {
-  phalanx: "Phalanx",
-  spearhead: "Spearhead",
   spread: "Spread",
   column: "Column",
+  spearhead: "Spearhead",
+  phalanx: "Phalanx",
 };
 
+const STARTING_FORMATIONS = ["spread", "column"];
 const LANE_X = [104, 158, 210, 262, 316];
 const SPAWN_BUFFER = 3200;
 const OBSTACLE_SEQUENCE = ["damage-wall", "breakable-barrier", "narrow-gap", "projectile-field"];
@@ -22,25 +23,16 @@ const OBSTACLE_CONFIG = {
   "projectile-field": { width: 220, length: 180 },
 };
 
-const INTRO_PICKUPS = [
-  { type: "circle", x: 116, y: 320 },
-  { type: "triangle", x: 308, y: 780 },
-  { type: "square", x: 210, y: 1280 },
-  { type: "circle", x: 144, y: 1880 },
-];
-
+const INTRO_PICKUPS = [{ type: "triangle", x: 210, y: 1480 }];
 const INTRO_ENEMIES = [
-  { x: 210, y: 620, hp: 2, speed: 30 },
-  { x: 120, y: 1140, hp: 2, speed: 34 },
-  { x: 286, y: 1760, hp: 3, speed: 38 },
-  { x: 182, y: 2580, hp: 3, speed: 42 },
+  { x: 126, y: 290, hp: 1, speed: 18 },
+  { x: 294, y: 320, hp: 1, speed: 18 },
+  { x: 210, y: 700, hp: 2, speed: 24 },
+  { x: 210, y: 1720, hp: 2, speed: 28 },
 ];
-
 const INTRO_OBSTACLES = [
-  { type: "damage-wall", x: 210, y: 1560 },
-  { type: "breakable-barrier", x: 210, y: 2480 },
-  { type: "narrow-gap", x: 210, y: 3440 },
-  { type: "projectile-field", x: 210, y: 4460 },
+  { type: "narrow-gap", x: 210, y: 980 },
+  { type: "breakable-barrier", x: 210, y: 2240 },
 ];
 
 export function createUnit(type, id) {
@@ -131,6 +123,30 @@ function chooseLaneX(state, avoidX = null) {
   return lane;
 }
 
+function setMessage(state, text) {
+  state.message = text;
+}
+
+function unlockFormation(state, formation) {
+  if (state.player.availableFormations.includes(formation)) {
+    return false;
+  }
+  state.player.availableFormations = FORMATIONS.filter(
+    (name) => name === formation || state.player.availableFormations.includes(name),
+  );
+  return true;
+}
+
+function maybeUnlockFormationForUnit(state, unitType) {
+  if (unitType === "triangle" && unlockFormation(state, "spearhead")) {
+    return "spearhead";
+  }
+  if (unitType === "square" && unlockFormation(state, "phalanx")) {
+    return "phalanx";
+  }
+  return null;
+}
+
 function seedInitialContent(state) {
   for (const pickup of INTRO_PICKUPS) {
     state.level.pickups.push(createPickupEntity(state, pickup.type, pickup.x, pickup.y));
@@ -144,10 +160,10 @@ function seedInitialContent(state) {
     state.level.obstacles.push(createObstacleEntity(state, obstacle.type, obstacle.y, obstacle.x));
   }
 
-  state.level.nextPickupY = INTRO_PICKUPS.at(-1).y + 520;
-  state.level.nextEnemyY = INTRO_ENEMIES.at(-1).y + 440;
-  state.level.nextObstacleY = INTRO_OBSTACLES.at(-1).y + 920;
-  state.level.obstaclePatternIndex = INTRO_OBSTACLES.length % OBSTACLE_SEQUENCE.length;
+  state.level.nextPickupY = 2840;
+  state.level.nextEnemyY = 1980;
+  state.level.nextObstacleY = 3380;
+  state.level.obstaclePatternIndex = 0;
   maintainSpawnBuffers(state);
 }
 
@@ -157,7 +173,7 @@ export function createInitialState() {
     gameOver: false,
     score: 0,
     kills: 0,
-    nextUnitId: 4,
+    nextUnitId: 2,
     nextProjectileId: 1,
     nextPickupId: 1,
     nextObstacleId: 1,
@@ -168,12 +184,9 @@ export function createInitialState() {
       x: 210,
       speed: 125,
       moveSpeed: 215,
-      formation: "phalanx",
-      party: [
-        createUnit("square", "unit-1"),
-        createUnit("triangle", "unit-2"),
-        createUnit("circle", "unit-3"),
-      ],
+      formation: "spread",
+      availableFormations: [...STARTING_FORMATIONS],
+      party: [createUnit("circle", "unit-1")],
     },
     level: {
       pickups: [],
@@ -185,7 +198,10 @@ export function createInitialState() {
       obstaclePatternIndex: 0,
     },
     projectiles: [],
-    message: "",
+    tutorial: {
+      step: 1,
+    },
+    message: "Solo circle: Spread hits wide lanes.",
   };
 
   seedInitialContent(state);
@@ -228,7 +244,7 @@ export function getFormationLayout(party, formation) {
     const spacing = party.length > 1 ? 120 / (party.length - 1) : 0;
     return sorted.map((unit, index) => ({
       ...unit,
-      x: -60 + spacing * index,
+      x: party.length === 1 ? 0 : -60 + spacing * index,
       y: priority[unit.type] === 0 ? -48 : -10,
       row: priority[unit.type] === 0 ? "front" : "back",
       isFront: priority[unit.type] === 0,
@@ -251,10 +267,11 @@ export function getFormationLayout(party, formation) {
   });
 }
 
-export function cycleFormation(formation, direction = 1) {
-  const index = FORMATIONS.indexOf(formation);
-  const nextIndex = (index + direction + FORMATIONS.length) % FORMATIONS.length;
-  return FORMATIONS[nextIndex];
+export function cycleFormation(formation, direction = 1, formations = FORMATIONS) {
+  const index = formations.indexOf(formation);
+  const baseIndex = index === -1 ? 0 : index;
+  const nextIndex = (baseIndex + direction + formations.length) % formations.length;
+  return formations[nextIndex];
 }
 
 function clamp(value, min, max) {
@@ -327,7 +344,7 @@ export function resolveObstacleEffect(obstacle, formation, frontUnits) {
 function resolveObstacle(state, obstacle) {
   const frontUnits = getFrontUnits(state.player.party, state.player.formation);
   const result = resolveObstacleEffect(obstacle, state.player.formation, frontUnits);
-  state.message = result.message;
+  setMessage(state, result.message);
   if (result.damageFront > 0) {
     damageFrontUnits(state, 1, result.damageFront);
   }
@@ -343,7 +360,19 @@ function addPickup(state, pickup) {
   state.player.party.push(createUnit(pickup.type, `unit-${state.nextUnitId}`));
   state.nextUnitId += 1;
   state.score += 25;
-  state.message = `Picked up ${pickup.type}.`;
+
+  const unlocked = maybeUnlockFormationForUnit(state, pickup.type);
+  if (unlocked === "spearhead") {
+    state.tutorial.step = Math.max(state.tutorial.step, 3);
+    setMessage(state, "Triangle joined. Spearhead unlocked.");
+    return;
+  }
+  if (unlocked === "phalanx") {
+    setMessage(state, "Square joined. Phalanx unlocked.");
+    return;
+  }
+
+  setMessage(state, `Picked up ${pickup.type}.`);
 }
 
 function spawnPickup(state) {
@@ -351,21 +380,21 @@ function spawnPickup(state) {
   const pickup = createPickupEntity(state, choosePickupType(state), chooseLaneX(state), y);
   state.level.pickups.push(pickup);
 
-  const earlyStretch = state.level.nextPickupY < 3200;
-  const spacing = earlyStretch ? 420 + nextRandom(state) * 110 : 320 + nextRandom(state) * 170;
+  const earlyStretch = state.level.nextPickupY < 3800;
+  const spacing = earlyStretch ? 480 + nextRandom(state) * 140 : 360 + nextRandom(state) * 180;
   state.level.nextPickupY += spacing;
 }
 
 function spawnEnemy(state) {
   const y = state.level.nextEnemyY;
-  const stage = Math.floor(state.distance / 3000);
-  const hp = 2 + Math.min(3, stage) + (nextRandom(state) < 0.3 ? 1 : 0);
-  const speed = 30 + stage * 3 + Math.floor(nextRandom(state) * 10);
+  const stage = Math.floor(state.distance / 3200);
+  const hp = 2 + Math.min(3, stage) + (nextRandom(state) < 0.25 ? 1 : 0);
+  const speed = 24 + stage * 3 + Math.floor(nextRandom(state) * 10);
   const enemy = createEnemyEntity(state, chooseLaneX(state), y, hp, speed);
   state.level.enemies.push(enemy);
 
-  const earlyStretch = state.level.nextEnemyY < 3200;
-  const spacing = earlyStretch ? 470 + nextRandom(state) * 130 : 360 + nextRandom(state) * 180;
+  const earlyStretch = state.level.nextEnemyY < 3600;
+  const spacing = earlyStretch ? 500 + nextRandom(state) * 140 : 380 + nextRandom(state) * 180;
   state.level.nextEnemyY += spacing;
 }
 
@@ -375,8 +404,8 @@ function spawnObstacle(state) {
   state.level.obstacles.push(obstacle);
   state.level.obstaclePatternIndex += 1;
 
-  const earlyStretch = state.level.nextObstacleY < 5200;
-  const spacing = earlyStretch ? 820 + nextRandom(state) * 160 : 680 + nextRandom(state) * 220;
+  const earlyStretch = state.level.nextObstacleY < 4200;
+  const spacing = earlyStretch ? 860 + nextRandom(state) * 180 : 700 + nextRandom(state) * 220;
   state.level.nextObstacleY += spacing + (type === "projectile-field" ? 80 : 0);
 }
 
@@ -388,7 +417,11 @@ function cleanupLevel(state) {
     return tailY > state.distance - 260;
   });
   state.projectiles = state.projectiles.filter(
-    (projectile) => projectile.y > state.distance - 40 && projectile.y < state.distance + 720,
+    (projectile) =>
+      projectile.y > state.distance - 40 &&
+      projectile.y < state.distance + 720 &&
+      projectile.x > PLAYER_BOUNDS.minX - 80 &&
+      projectile.x < PLAYER_BOUNDS.maxX + 80,
   );
 }
 
@@ -406,10 +439,36 @@ function maintainSpawnBuffers(state) {
   }
 }
 
+function getCircleVolley(formation) {
+  if (formation === "spread") {
+    return {
+      lockWidth: 140,
+      cooldown: 0.72,
+      projectiles: [{ offsetX: -72, vx: 0 }, { offsetX: 0, vx: 0 }, { offsetX: 72, vx: 0 }],
+    };
+  }
+  if (formation === "column") {
+    return {
+      lockWidth: 42,
+      cooldown: 0.48,
+      projectiles: [{ offsetX: 0, vx: 0 }],
+    };
+  }
+  return {
+    lockWidth: 58,
+    cooldown: 0.56,
+    projectiles: [{ offsetX: 0, vx: 0 }],
+  };
+}
+
 function updateProjectiles(state, dt) {
   const nextProjectiles = [];
   for (const projectile of state.projectiles) {
-    const moved = { ...projectile, y: projectile.y + projectile.speed * dt };
+    const moved = {
+      ...projectile,
+      x: projectile.x + (projectile.vx || 0) * dt,
+      y: projectile.y + projectile.speed * dt,
+    };
     const target = state.level.enemies.find(
       (enemy) => Math.abs(enemy.x - moved.x) < 22 && Math.abs(enemy.y - moved.y) < 24,
     );
@@ -440,6 +499,7 @@ function updateCombat(state, dt) {
   }
   state.player.party = updatedUnits;
 
+  const circleVolley = getCircleVolley(state.player.formation);
   for (const circle of circles) {
     const actual = state.player.party.find((unit) => unit.id === circle.id);
     if (!actual || actual.cooldown > 0) {
@@ -448,19 +508,22 @@ function updateCombat(state, dt) {
     const target = state.level.enemies.find(
       (enemy) =>
         enemy.y > state.distance &&
-        enemy.y - state.distance < 280 &&
-        Math.abs(enemy.x - (state.player.x + circle.x)) < 50,
+        enemy.y - state.distance < 300 &&
+        Math.abs(enemy.x - (state.player.x + circle.x)) < circleVolley.lockWidth,
     );
     if (target) {
-      actual.cooldown = 0.55;
-      state.projectiles.push({
-        id: `proj-${state.nextProjectileId}`,
-        x: state.player.x + circle.x,
-        y: state.distance + 30 + circle.y,
-        speed: 360,
-        damage: 1,
-      });
-      state.nextProjectileId += 1;
+      actual.cooldown = circleVolley.cooldown;
+      for (const projectile of circleVolley.projectiles) {
+        state.projectiles.push({
+          id: `proj-${state.nextProjectileId}`,
+          x: state.player.x + circle.x + projectile.offsetX,
+          y: state.distance + 30 + circle.y,
+          speed: 360,
+          damage: 1,
+          vx: projectile.vx,
+        });
+        state.nextProjectileId += 1;
+      }
     }
   }
 
@@ -499,7 +562,7 @@ function updateEnemies(state, dt) {
   if (contact.length > 0) {
     damageFrontUnits(state, 1, contact.length);
     state.level.enemies = state.level.enemies.filter((enemy) => !contact.includes(enemy));
-    state.message = "Enemy contact on the front line.";
+    setMessage(state, "Enemy contact on the front line.");
   }
 }
 
@@ -545,6 +608,19 @@ function updateObstacles(state, dt) {
   }
 }
 
+function updateTutorial(state) {
+  if (state.tutorial.step === 1 && state.distance >= 620) {
+    state.tutorial.step = 2;
+    setMessage(state, "Gap ahead. Switch to Column.");
+    return;
+  }
+
+  if (state.tutorial.step === 3 && state.distance >= 1880) {
+    state.tutorial.step = 4;
+    setMessage(state, "Barrier ahead. Spearhead puts melee in front.");
+  }
+}
+
 export function updateGame(state, input, dt) {
   if (!state.running) {
     return state;
@@ -558,15 +634,16 @@ export function updateGame(state, input, dt) {
   );
 
   if (input.cycleFormation) {
-    next.player.formation = cycleFormation(next.player.formation, 1);
+    next.player.formation = cycleFormation(next.player.formation, 1, next.player.availableFormations);
   } else if (input.prevFormation) {
-    next.player.formation = cycleFormation(next.player.formation, -1);
+    next.player.formation = cycleFormation(next.player.formation, -1, next.player.availableFormations);
   }
 
   next.distance += next.player.speed * dt;
   next.score = Math.max(next.score, Math.floor(next.distance) + next.kills * 50);
 
   maintainSpawnBuffers(next);
+  updateTutorial(next);
   updatePickups(next);
   updateObstacles(next, dt);
   updateCombat(next, dt);
@@ -577,7 +654,7 @@ export function updateGame(state, input, dt) {
   if (next.player.party.length === 0) {
     next.running = false;
     next.gameOver = true;
-    next.message = "Formation collapsed. Press restart.";
+    setMessage(next, "Formation collapsed. Press restart.");
   }
 
   return next;
